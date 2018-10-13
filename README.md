@@ -1,1 +1,2 @@
 # MagicLamp
+Work in progress
