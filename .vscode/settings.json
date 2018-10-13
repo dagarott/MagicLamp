@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.env.linux": {
+        "PATH": "/home/dani/.platformio/penv/bin:/home/dani/.platformio/penv:/home/dani/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/local/gcc-arm-none-eabi-7-2018-q2-update/bin/",
+        "PLATFORMIO_CALLER": "vscode"
+    }
+}
