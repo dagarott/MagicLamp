@@ -337,17 +337,36 @@ void loop()
 
 #if TEMP_HUMIDITY_ENABLE
   unsigned long TempHumidityCurrentMillis = millis();
-  
+  float temperature = 0;
+  float humidity = 0;
 
   if (TempHumidityCurrentMillis - TempHumidityLastMillis > 2500)
   {
     TempHumidityLastMillis = TempHumidityCurrentMillis;
-    float temperature = sht15_get_temperature();
-    float humidity = sht15_get_humidity();
+    temperature = sht15_get_temperature();
+    humidity = sht15_get_humidity();
     Serial.print(temperature);
     Serial.print(" | ");
     Serial.println(humidity);
   }
+  
+  if ((temperature < 25.00)  && (temperature >= 20.00))
+  {
+    ws2812fx.setColor(0xFF,0,0);
+    ws2812fx.setMode(FX_MODE_STATIC);
+  }
+  if ((temperature >= 25.00) && (temperature < 30.00))
+  {
+    ws2812fx.setColor(0xFF,0xFF,0);
+    ws2812fx.setMode(FX_MODE_STATIC);
+  }
+  if (temperature >= 30.00) 
+  {
+    ws2812fx.setColor(0,0xFF,0);
+    ws2812fx.setMode(FX_MODE_STATIC);
+  }
+  ws2812fx.service();
+
 #endif
 
 #if BLUETOOTH_ENABLE
@@ -383,17 +402,23 @@ void loop()
 #endif
 
 #if SK6812_ENABLE
-  now = millis();
-  ws2812fx.service();
-  if (now - last_change > TIMER_MS)
-  {
-    ws2812fx.setMode((ws2812fx.getMode() + 1) % ws2812fx.getModeCount());
-    last_change = now;
-  }
+  // now = millis();
+  // ws2812fx.service();
+  // if (now - last_change > TIMER_MS)
+  // {
+  //   ws2812fx.setMode((ws2812fx.getMode() + 1) % ws2812fx.getModeCount());
+  //   last_change = now;
+  // }
 #endif
 }
 
 #if MESH_ENABLE
+/**
+ * @brief 
+ * 
+ * @param topic 
+ * @param msg 
+ */
 void Callback(const char *topic, const char *msg)
 {
 
