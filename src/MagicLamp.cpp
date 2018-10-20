@@ -2,8 +2,15 @@
 #define MQTT_ENABLE 1
 #define WIFI_ENABLE 1
 #define MESH_ENABLE 0
-#define TEMP_HUMIDITY_ENABLE 1
+#define TEMP_HUMIDITY_ENABLE 0
 #define SK6812_ENABLE 1
+#define DEBUG_ENABLE 1
+
+#if DEBUG_ENABLE
+#include "TelnetSpy.h"
+TelnetSpy SerialAndTelnet;
+#define Serial SerialAndTelnet
+#endif
 
 #if WIFI_ENABLE
 // BEGIN WIFI
@@ -74,7 +81,7 @@ void Callback(const char *topic, const char *msg);
 #define slash "/"                         // all topics are prefixed with slash and your dioty_id
 #define topicConnect "/ESP8266/connected" // topic to say we're alive
 #define topicIn "/ESP8266/inTopic"        // topic to switch off power system
-#define RGBValueIn "/ESP8266/RGBValue"        // topic to switch off power system
+#define RGBValueIn "/ESP8266/RGBValue"    // topic to switch off power system
 //#define topicOut        "/ESP8266/outTopic"    // topic to subscribe
 char msg[50];  // message to publish
 int value = 0; // connection attempt
@@ -93,21 +100,7 @@ char cmnd_color_topic[44];
 
 #if SK6812_ENABLE
 // BEGIN RGBW LEDS
-#include <WS2812FX.h>
-#define LED_COUNT 60
-#define LED_PIN 2
-#define TIMER_MS 5000
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = Arduino pin number (most are valid)
-// Parameter 3 = pixel type flags, add together as needed:
-//   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
-//   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
-//   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
-//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-//   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
-WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_RGBW + NEO_KHZ800);
-unsigned long last_change = 0;
-unsigned long now = 0;
+#include "LedStripControl.h"
 //END RGBW LEDS
 #endif
 
@@ -126,7 +119,9 @@ int8_t BuffIndex = 0;
 
 #if TEMP_HUMIDITY_ENABLE
 #include "SHT15.h"
-unsigned long TempHumidityLastMillis=0;
+#include "TempHumidity.h"
+float Temperature = 0;
+float Humidity = 0;
 #endif
 
 #if BLUETOOTH_ENABLE
@@ -269,10 +264,31 @@ void setupOTA()
 }
 #endif
 
+#if DEBUG_ENABLE
+void telnetConnected()
+{
+  Serial.println("Telnet connection established.");
+}
+
+void telnetDisconnected()
+{
+  Serial.println("Telnet connection closed.");
+}
+#endif
 void setup()
 {
+#if DEBUG_ENABLE
+  SerialAndTelnet.setWelcomeMsg("Welcome to the TelnetSpy example\n\n");
+  SerialAndTelnet.setCallbackOnConnect(telnetConnected);
+  SerialAndTelnet.setCallbackOnDisconnect(telnetDisconnected);
+  Serial.begin(74880);
+  delay(100); // Wait for serial port
+  Serial.setDebugOutput(false);
+  Serial.print("\n\nConnecting to WiFi ");
+#else
   Serial.begin(115200);
   Serial.println("Booting");
+#endif
 
 #if WIFI_ENABLE
   setupWIFI();
@@ -301,22 +317,32 @@ void setup()
 #endif
 
 #if SK6812_ENABLE
-  ws2812fx.init();
-  ws2812fx.setBrightness(255);
-  ws2812fx.setSpeed(1000);
-  ws2812fx.setColor(0x007BFF);
-  ws2812fx.setMode(FX_MODE_STATIC);
-  ws2812fx.start();
+  sk6812Init();
 #endif
 }
 
 void loop()
 {
+#if DEBUG_ENABLE
+  SerialAndTelnet.handle();
+#endif
+
 #if WIFI_ENABLE
   ArduinoOTA.handle();
 #endif
 
 #if MQTT_ENABLE
+  // Reconnect if there is an issue with the MQTT connection
+  // const unsigned long mqttConnectionMillis = millis();
+  // if ((false == mqttClient.connected()) && (mqttConnectionInterval <= (mqttConnectionMillis - mqttConnectionPreviousMillis)))
+  // {
+  //   mqttConnectionPreviousMillis = mqttConnectionMillis;
+  //   reconnect();
+  // }
+  if (!mqttClient.connected())
+  {
+    reconnect();
+  }
   mqttClient.loop();
 #endif
 
@@ -325,48 +351,17 @@ void loop()
     return;
 #endif
 
-#if MQTT_ENABLE
-  // Reconnect if there is an issue with the MQTT connection
-  const unsigned long mqttConnectionMillis = millis();
-  if ((false == mqttClient.connected()) && (mqttConnectionInterval <= (mqttConnectionMillis - mqttConnectionPreviousMillis)))
-  {
-    mqttConnectionPreviousMillis = mqttConnectionMillis;
-    reconnect();
-  }
-#endif
-
 #if TEMP_HUMIDITY_ENABLE
   unsigned long TempHumidityCurrentMillis = millis();
-  float temperature = 0;
-  float humidity = 0;
-
+  static unsigned long TempHumidityLastMillis = 0;
   if (TempHumidityCurrentMillis - TempHumidityLastMillis > 2500)
   {
     TempHumidityLastMillis = TempHumidityCurrentMillis;
-    temperature = sht15_get_temperature();
-    humidity = sht15_get_humidity();
-    Serial.print(temperature);
+    TempHumiditySensing(&Temperature, &Humidity);
+    Serial.print(Temperature);
     Serial.print(" | ");
-    Serial.println(humidity);
+    Serial.println(Humidity);
   }
-  
-  if ((temperature < 25.00)  && (temperature >= 20.00))
-  {
-    ws2812fx.setColor(0xFF,0,0);
-    ws2812fx.setMode(FX_MODE_STATIC);
-  }
-  if ((temperature >= 25.00) && (temperature < 30.00))
-  {
-    ws2812fx.setColor(0xFF,0xFF,0);
-    ws2812fx.setMode(FX_MODE_STATIC);
-  }
-  if (temperature >= 30.00) 
-  {
-    ws2812fx.setColor(0,0xFF,0);
-    ws2812fx.setMode(FX_MODE_STATIC);
-  }
-  ws2812fx.service();
-
 #endif
 
 #if BLUETOOTH_ENABLE
@@ -409,6 +404,7 @@ void loop()
   //   ws2812fx.setMode((ws2812fx.getMode() + 1) % ws2812fx.getModeCount());
   //   last_change = now;
   // }
+  FullWhite(125);
 #endif
 }
 
